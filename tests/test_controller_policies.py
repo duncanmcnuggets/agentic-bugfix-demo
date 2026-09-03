@@ -247,7 +247,13 @@ def test_reviewer_rejection_stops_before_human_gate(controller: BugfixController
     calls: list[str] = []
     _install_fake_call(controller, {"reviewer": [_reviewer("reject")]}, calls)
     with pytest.raises(WorkflowFailure) as caught:
-        controller._reviewer("issue", ["criterion"], "diff", {"check": _command(passed=True)})
+        controller._reviewer(
+            "issue",
+            ["criterion"],
+            "diff",
+            _command(passed=True, exit_code=1, output="AssertionError"),
+            {"check": _command(passed=True)},
+        )
     assert caught.value.failure_class == "reviewer_rejection"
     assert controller._require_state().phase == Phase.REVIEWER
 

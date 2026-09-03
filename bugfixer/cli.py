@@ -510,6 +510,7 @@ class BugfixController:
         issue: str,
         criteria: list[str],
         diff: str,
+        red: CommandResult,
         results: dict[str, CommandResult],
     ) -> ReviewerOutput:
         self._transition(Phase.REVIEWER)
@@ -519,6 +520,12 @@ class BugfixController:
                 "BUG REPORT\n"
                 f"{issue}\n\nACCEPTANCE CRITERIA\n{json.dumps(criteria, indent=2)}\n\n"
                 f"BASE-TO-CANDIDATE DIFF\n{diff}\n\n"
+                "EXACT RED-BEFORE EVIDENCE (BOUNDED OUTPUT TAIL)\n"
+                f"command: {' '.join(red.command)}\n"
+                f"exit_code: {red.exit_code}\n"
+                f"timed_out: {red.timed_out}\n"
+                f"red_gate_accepted: {red.passed}\n"
+                f"output:\n{red.combined_output[-6_000:]}\n\n"
                 f"EXACT VERIFIER REPORT\n{verifier_report(results)}\n{diagnostic}"
             )
             try:
@@ -665,7 +672,7 @@ Approved for draft PR publication. Merge remains a human decision.
         _, test_hash, red = self._test_writer(issue, criteria, explorer)
         _, results = self._fixer(issue, criteria, explorer, red, test_hash)
         diff = get_diff(self._require_worktree(), state.base_sha)
-        reviewer = self._reviewer(issue, criteria, diff, results)
+        reviewer = self._reviewer(issue, criteria, diff, red, results)
         self._write_decision_package(red, results, reviewer, diff)
 
         self._transition(Phase.HUMAN_GATE)

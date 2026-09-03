@@ -75,7 +75,7 @@ in `artifacts/<run-id>/state.json` after meaningful transitions.
 | Explorer | Issue, acceptance criteria, target repository view | Controller, verifier, secrets | Read-only target tools |
 | Test Writer | Issue, criteria, validated Explorer output | Fixer context, verifier source, secrets | Read-only tools; returns one candidate test |
 | Fixer | Issue, criteria, grounded evidence, exact red output, current resolver | Test-writing transcript, trusted oracle source, secrets | Read-only tools; returns one source candidate |
-| Reviewer | Issue, criteria, diff, verifier report | Implementer transcripts, repository tools, secrets | Structured review only |
+| Reviewer | Issue, criteria, diff, bounded exact red output, verifier report | Implementer transcripts, repository tools, secrets | Structured review only |
 
 Each call starts without prior conversation state. Only strict structured output and bounded
 mechanical evidence move between phases. Diagnostic retry payloads retain the relevant output tail,

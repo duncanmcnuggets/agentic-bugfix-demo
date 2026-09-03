@@ -136,6 +136,7 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
     repo = _copy_as_clean_repository(tmp_path)
     roles: list[str] = []
     turn_budgets: list[tuple[str, int]] = []
+    reviewer_inputs: list[str] = []
 
     def fake_run_structured_agent(
         agent: object,
@@ -147,9 +148,11 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
         model: str,
         max_turns: int,
     ) -> AgentCallResult[Any]:
-        del agent, input_text, run_id
+        del agent, run_id
         roles.append(role)
         turn_budgets.append((role, max_turns))
+        if role == "reviewer":
+            reviewer_inputs.append(input_text)
         output = _fake_output(output_type)
         return AgentCallResult(
             output=output,
@@ -188,6 +191,11 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
             ("fixer", 6),
             ("reviewer", 2),
         ]
+        assert len(reviewer_inputs) == 1
+        assert "EXACT RED-BEFORE EVIDENCE" in reviewer_inputs[0]
+        assert "exit_code: 1" in reviewer_inputs[0]
+        assert "red_gate_accepted: True" in reviewer_inputs[0]
+        assert "AssertionError" in reviewer_inputs[0]
         assert state.phase == Phase.END
         assert state.human_decision == "approved"
         assert state.final_verifier is True
