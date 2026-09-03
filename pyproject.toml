@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-bugfix-demo"
+version = "0.1.0"
+description = "A controlled multi-agent bug-fixing workflow powered by the OpenAI Agents SDK."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openai-agents==0.22.0",
+  "pydantic>=2.12,<3",
+  "pytest>=8.4,<10",
+  "ruff>=0.12,<1",
+  "mypy>=1.18,<2",
+]
+
+[project.scripts]
+agentic-bugfixer = "bugfixer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bugfixer*"]
+
+[tool.setuptools.package-data]
+bugfixer = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "demo_target/tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["bugfixer", "demo_target/src"]
+
