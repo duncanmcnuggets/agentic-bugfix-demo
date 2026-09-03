@@ -77,6 +77,9 @@ def _copy_as_clean_repository(tmp_path: Path) -> Path:
             ".pytest_cache",
             ".mypy_cache",
             ".ruff_cache",
+            # Keep the synthetic repository at the original BUG-001 state even
+            # when this test runs against the bugfix pull request's merge commit.
+            "test_bug001_regression.py",
         ),
     )
     _git(repo, "init", "-b", "main")
