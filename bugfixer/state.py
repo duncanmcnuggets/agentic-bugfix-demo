@@ -52,6 +52,7 @@ class RunState(BaseModel):
     usage: dict[str, int | float] = Field(
         default_factory=lambda: {
             "agent_calls": 0,
+            "model_requests": 0,
             "input_tokens": 0,
             "cached_input_tokens": 0,
             "output_tokens": 0,
@@ -81,4 +82,3 @@ class RunState(BaseModel):
         temporary = path.with_name(f".{path.name}.tmp")
         temporary.write_text(self.model_dump_json(indent=2), encoding="utf-8")
         os.replace(temporary, path)
-

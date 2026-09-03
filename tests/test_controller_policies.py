@@ -7,7 +7,7 @@ import pytest
 
 import bugfixer.cli as cli
 from bugfixer.artifacts import ArtifactStore
-from bugfixer.cli import BugfixController, WorkflowFailure
+from bugfixer.cli import MAX_MODEL_CALLS, BugfixController, WorkflowFailure
 from bugfixer.config import Settings
 from bugfixer.repo_tools import RepoContext
 from bugfixer.schemas import (
@@ -180,6 +180,13 @@ def test_policy_violation_has_no_retry(controller: BugfixController) -> None:
         controller._test_writer("issue", ["criterion"], _explorer())
     assert caught.value.failure_class == "policy_violation"
     assert controller._require_state().retry_counts == {}
+
+
+def test_model_call_budget_is_fail_closed(controller: BugfixController) -> None:
+    controller._model_call_attempts = MAX_MODEL_CALLS
+    with pytest.raises(WorkflowFailure) as caught:
+        controller._call_role("explorer", "input", ExplorerOutput)
+    assert caught.value.failure_class == "model_call_budget"
 
 
 def test_failed_verifier_never_starts_reviewer(

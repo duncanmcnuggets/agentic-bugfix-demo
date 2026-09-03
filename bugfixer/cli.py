@@ -142,6 +142,7 @@ class BugfixController:
         self.worktree: Path | None = None
         self.repo_context: RepoContext | None = None
         self._role_call_counts: dict[str, int] = {}
+        self._model_call_attempts = 0
 
     def _require_state(self) -> RunState:
         if self.state is None:
@@ -174,7 +175,7 @@ class BugfixController:
         record = result.record.to_dict()
         state.agent_results[artifact_role] = record
         usage = result.record.usage
-        state.usage["agent_calls"] = int(state.usage["agent_calls"]) + 1
+        state.usage["model_requests"] = int(state.usage["model_requests"]) + usage.requests
         state.usage["input_tokens"] = int(state.usage["input_tokens"]) + usage.input_tokens
         state.usage["cached_input_tokens"] = (
             int(state.usage["cached_input_tokens"]) + usage.cached_input_tokens
@@ -210,9 +211,11 @@ class BugfixController:
         output_type: type[OutputT],
     ) -> OutputT:
         state = self._require_state()
-        current_calls = int(state.usage["agent_calls"])
-        if current_calls >= MAX_MODEL_CALLS:
+        if self._model_call_attempts >= MAX_MODEL_CALLS:
             raise WorkflowFailure("model_call_budget", "Maximum model-call budget reached")
+        self._model_call_attempts += 1
+        state.usage["agent_calls"] = self._model_call_attempts
+        self._require_store().save_state(state)
         self._role_call_counts[role] = self._role_call_counts.get(role, 0) + 1
         count = self._role_call_counts[role]
         prompt_name = role if count == 1 else f"{role}-retry-{count - 1}"
