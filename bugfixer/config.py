@@ -18,11 +18,28 @@ class Settings:
     """Non-secret settings used to construct agents."""
 
     model: str
-    max_turns: int = 8
+    explorer_max_turns: int = 12
+    test_writer_max_turns: int = 8
+    fixer_max_turns: int = 6
+    reviewer_max_turns: int = 2
     max_output_tokens: int = 4_096
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = (
         "low"
     )
+
+    def turn_budget_for(self, role: str) -> int:
+        """Return the bounded SDK loop budget for one role."""
+
+        budgets = {
+            "explorer": self.explorer_max_turns,
+            "test_writer": self.test_writer_max_turns,
+            "fixer": self.fixer_max_turns,
+            "reviewer": self.reviewer_max_turns,
+        }
+        try:
+            return budgets[role]
+        except KeyError as exc:
+            raise ValueError(f"Unknown agent role: {role}") from exc
 
 
 def load_settings() -> Settings:

@@ -119,10 +119,18 @@ missed-case eval exist because a plausible test can still be incomplete.
 | Path change, deletion, test mutation | Immediate stop; no retry |
 | Reviewer rejection | Stop and escalate to the human |
 | Stale base SHA | Stop before branch creation |
+| Agent reaches its role-specific turn cap | Stop and retain the failed trace and usage metrics |
 
 There are at most six model calls in one run. Unique run IDs, detached worktrees, unique branch
 names, exact file allowlists, and stale-base checks prevent a blind rerun from overwriting a prior
 result or creating an inconsistent branch.
+
+Each call also has a bounded Agents SDK loop budget: Explorer 12 turns, Test Writer 8, Fixer 6,
+and Reviewer 2. A turn is an execution step that may include a model response and tool use; it is
+not a dollar or token allowance. Raising a ceiling does not pre-spend it. Explorer gets the largest
+ceiling because it must navigate source with read-only tools, while the tool-free Reviewer normally
+finishes in one turn. Successful and failed calls both contribute their available token and latency
+usage to `metrics.json`.
 
 ## Controlled failure demonstration
 

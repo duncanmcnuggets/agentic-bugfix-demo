@@ -13,15 +13,6 @@ from pydantic import BaseModel
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
 
-class AgentExecutionError(RuntimeError):
-    """Sanitized agent failure suitable for controller state and artifacts."""
-
-    def __init__(self, role: str, failure_class: str, message: str) -> None:
-        super().__init__(message)
-        self.role = role
-        self.failure_class = failure_class
-
-
 @dataclass(frozen=True, slots=True)
 class UsageSummary:
     requests: int = 0
@@ -30,6 +21,27 @@ class UsageSummary:
     output_tokens: int = 0
     reasoning_tokens: int = 0
     total_tokens: int = 0
+
+
+class AgentExecutionError(RuntimeError):
+    """Sanitized agent failure suitable for controller state and artifacts."""
+
+    def __init__(
+        self,
+        role: str,
+        failure_class: str,
+        message: str,
+        *,
+        elapsed_seconds: float = 0.0,
+        usage: UsageSummary | None = None,
+        max_turns: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.role = role
+        self.failure_class = failure_class
+        self.elapsed_seconds = elapsed_seconds
+        self.usage = usage or UsageSummary()
+        self.max_turns = max_turns
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,14 +98,31 @@ def run_structured_agent(
         output = result.final_output_as(output_type, raise_if_incorrect_type=True)
     except ModelBehaviorError as exc:
         raise AgentExecutionError(
-            role, "structured_output_failure", "Model output violated the structured contract"
+            role,
+            "structured_output_failure",
+            "Model output violated the structured contract",
+            elapsed_seconds=round(monotonic() - started, 3),
+            usage=_usage_summary(exc.run_data),
+            max_turns=max_turns,
         ) from exc
     except MaxTurnsExceeded as exc:
         raise AgentExecutionError(
-            role, "max_turns_exceeded", "Agent exceeded its turn budget"
+            role,
+            "max_turns_exceeded",
+            f"Agent exceeded its {max_turns}-turn execution budget",
+            elapsed_seconds=round(monotonic() - started, 3),
+            usage=_usage_summary(exc.run_data),
+            max_turns=max_turns,
         ) from exc
     except ModelTimeoutError as exc:
-        raise AgentExecutionError(role, "temporary_api_error", "Model request timed out") from exc
+        raise AgentExecutionError(
+            role,
+            "temporary_api_error",
+            "Model request timed out",
+            elapsed_seconds=round(monotonic() - started, 3),
+            usage=_usage_summary(exc.run_data),
+            max_turns=max_turns,
+        ) from exc
     except AgentExecutionError:
         raise
     except Exception as exc:
@@ -101,6 +130,9 @@ def run_structured_agent(
             role,
             "api_error",
             f"Agent call failed safely ({type(exc).__name__}); sensitive details omitted",
+            elapsed_seconds=round(monotonic() - started, 3),
+            usage=_usage_summary(getattr(exc, "run_data", None)),
+            max_turns=max_turns,
         ) from exc
 
     elapsed = monotonic() - started

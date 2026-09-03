@@ -135,6 +135,7 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
 ) -> None:
     repo = _copy_as_clean_repository(tmp_path)
     roles: list[str] = []
+    turn_budgets: list[tuple[str, int]] = []
 
     def fake_run_structured_agent(
         agent: object,
@@ -146,8 +147,9 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
         model: str,
         max_turns: int,
     ) -> AgentCallResult[Any]:
-        del agent, input_text, run_id, max_turns
+        del agent, input_text, run_id
         roles.append(role)
+        turn_budgets.append((role, max_turns))
         output = _fake_output(output_type)
         return AgentCallResult(
             output=output,
@@ -180,6 +182,12 @@ def test_full_controller_path_with_mocked_api_and_real_verifier(
         store = controller._require_store()
         worktree = controller._require_worktree()
         assert roles == ["explorer", "test_writer", "fixer", "reviewer"]
+        assert turn_budgets == [
+            ("explorer", 12),
+            ("test_writer", 8),
+            ("fixer", 6),
+            ("reviewer", 2),
+        ]
         assert state.phase == Phase.END
         assert state.human_decision == "approved"
         assert state.final_verifier is True

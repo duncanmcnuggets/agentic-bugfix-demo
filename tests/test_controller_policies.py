@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 import bugfixer.cli as cli
+from bugfixer.api_runner import AgentExecutionError, UsageSummary
 from bugfixer.artifacts import ArtifactStore
 from bugfixer.cli import MAX_MODEL_CALLS, BugfixController, WorkflowFailure
 from bugfixer.config import Settings
@@ -187,6 +188,32 @@ def test_model_call_budget_is_fail_closed(controller: BugfixController) -> None:
     with pytest.raises(WorkflowFailure) as caught:
         controller._call_role("explorer", "input", ExplorerOutput)
     assert caught.value.failure_class == "model_call_budget"
+
+
+def test_failed_agent_usage_is_retained(controller: BugfixController) -> None:
+    controller._role_call_counts["explorer"] = 1
+    error = AgentExecutionError(
+        "explorer",
+        "max_turns_exceeded",
+        "Agent exceeded its 12-turn execution budget",
+        elapsed_seconds=2.5,
+        usage=UsageSummary(requests=12, input_tokens=100, output_tokens=25, total_tokens=125),
+        max_turns=12,
+    )
+
+    controller._record_agent_failure("explorer", error)
+
+    state = controller._require_state()
+    assert state.usage["model_requests"] == 12
+    assert state.usage["input_tokens"] == 100
+    assert state.usage["output_tokens"] == 25
+    assert state.usage["total_latency_seconds"] == 2.5
+    assert state.agent_results["explorer-failure"]["failure"] == {
+        "class": "max_turns_exceeded",
+        "message": "Agent exceeded its 12-turn execution budget",
+        "max_turns": 12,
+    }
+    assert (controller._require_store().root / "agents/explorer-failure.json").is_file()
 
 
 def test_failed_verifier_never_starts_reviewer(

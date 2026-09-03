@@ -9,6 +9,7 @@ import re
 import sys
 import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar, cast
@@ -24,7 +25,12 @@ from bugfixer.agents import (
     create_reviewer_agent,
     create_test_writer_agent,
 )
-from bugfixer.api_runner import AgentCallResult, AgentExecutionError, run_structured_agent
+from bugfixer.api_runner import (
+    AgentCallResult,
+    AgentExecutionError,
+    UsageSummary,
+    run_structured_agent,
+)
 from bugfixer.artifacts import ArtifactStore
 from bugfixer.config import ConfigurationError, Settings, load_settings
 from bugfixer.git_ops import (
@@ -174,7 +180,12 @@ class BugfixController:
         artifact_role = role if count == 1 else f"{role}-retry-{count - 1}"
         record = result.record.to_dict()
         state.agent_results[artifact_role] = record
-        usage = result.record.usage
+        self._accumulate_usage(result.record.usage, result.record.elapsed_seconds)
+        self._require_store().write_json(f"agents/{artifact_role}.json", record)
+        self._require_store().save_state(state)
+
+    def _accumulate_usage(self, usage: UsageSummary, elapsed_seconds: float) -> None:
+        state = self._require_state()
         state.usage["model_requests"] = int(state.usage["model_requests"]) + usage.requests
         state.usage["input_tokens"] = int(state.usage["input_tokens"]) + usage.input_tokens
         state.usage["cached_input_tokens"] = (
@@ -185,9 +196,27 @@ class BugfixController:
             int(state.usage["reasoning_tokens"]) + usage.reasoning_tokens
         )
         state.usage["total_latency_seconds"] = round(
-            float(state.usage["total_latency_seconds"]) + result.record.elapsed_seconds, 3
+            float(state.usage["total_latency_seconds"]) + elapsed_seconds, 3
         )
-        self._require_store().write_json(f"agents/{artifact_role}.json", record)
+
+    def _record_agent_failure(self, role: str, error: AgentExecutionError) -> None:
+        state = self._require_state()
+        count = self._role_call_counts[role]
+        artifact_role = role if count == 1 else f"{role}-retry-{count - 1}"
+        record = {
+            "role": role,
+            "model": self.settings.model,
+            "elapsed_seconds": error.elapsed_seconds,
+            "usage": asdict(error.usage),
+            "failure": {
+                "class": error.failure_class,
+                "message": str(error),
+                "max_turns": error.max_turns,
+            },
+        }
+        state.agent_results[f"{artifact_role}-failure"] = record
+        self._accumulate_usage(error.usage, error.elapsed_seconds)
+        self._require_store().write_json(f"agents/{artifact_role}-failure.json", record)
         self._require_store().save_state(state)
 
     def _agent_for_role(self, role: str) -> Agent[None]:
@@ -219,8 +248,15 @@ class BugfixController:
         self._role_call_counts[role] = self._role_call_counts.get(role, 0) + 1
         count = self._role_call_counts[role]
         prompt_name = role if count == 1 else f"{role}-retry-{count - 1}"
+        max_turns = self.settings.turn_budget_for(role)
         self._require_store().write_text(f"prompts/{prompt_name}-input.txt", input_text)
-        self._event("agent_started", role=role, attempt=count, model=self.settings.model)
+        self._event(
+            "agent_started",
+            role=role,
+            attempt=count,
+            model=self.settings.model,
+            max_turns=max_turns,
+        )
         print(f"[{role.upper()}] API call started (attempt {count})")
         try:
             result = run_structured_agent(
@@ -230,15 +266,19 @@ class BugfixController:
                 run_id=state.run_id,
                 role=role,
                 model=self.settings.model,
-                max_turns=self.settings.max_turns,
+                max_turns=max_turns,
             )
         except AgentExecutionError as exc:
+            self._record_agent_failure(role, exc)
             self._event(
                 "agent_failed",
                 role=role,
                 attempt=count,
                 failure_class=exc.failure_class,
                 error=str(exc),
+                elapsed_seconds=exc.elapsed_seconds,
+                model_requests=exc.usage.requests,
+                max_turns=max_turns,
             )
             raise
         self._record_agent_result(role, cast(AgentCallResult[BaseModel], result))
