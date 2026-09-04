@@ -36,6 +36,23 @@ def test_explicit_falsy_values_are_preserved() -> None:
     assert plan.feature_mode == "off"
 '''
 
+BUGGY_RESOLVER = '''\
+"""Primitive override resolution."""
+
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
+def resolve_override(override: T | None, default: T) -> T:
+    """Return an explicit override, or the default when no override is supplied.
+
+    This implementation intentionally contains BUG-001 for the demo.
+    """
+
+    return override or default
+'''
+
 FIXED_RESOLVER = '''\
 """Primitive override resolution."""
 
@@ -82,6 +99,8 @@ def _copy_as_clean_repository(tmp_path: Path) -> Path:
             "test_bug001_regression.py",
         ),
     )
+    resolver = repo / "demo_target/src/config_service/resolver.py"
+    resolver.write_text(BUGGY_RESOLVER, encoding="utf-8")
     _git(repo, "init", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.com")
